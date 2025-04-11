@@ -46,6 +46,10 @@ class Host(models.Model):
     paused = fields.Boolean('Paused', help='Host will stop scheduling while paused')
     profile = fields.Boolean('Profile', help='Enable profiling on this host')
 
+    is_leader = fields.Boolean('Is leader', help='This host is the leader of the cluster', default=False)
+    is_builder = fields.Boolean('Is builder', help='This host is a builder of the cluster', default=True)
+    is_registry = fields.Boolean('Is docker registry', help='This host is a docker regisrty', default=False)
+
     use_remote_docker_registry = fields.Boolean('Use remote Docker Registry', default=False, help="Use docker registry for pulling images")
     docker_registry_url = fields.Char('Registry Url', help="Override global registry URL for this host.")
 
@@ -67,6 +71,9 @@ class Host(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
+        if self.search_count([]) == 0 and len(vals_list) == 1:
+            vals_list[0].update({'is_leader': True})
+
         for vals in vals_list:
             if 'disp_name' not in vals:
                 vals['disp_name'] = vals['name']
@@ -148,10 +155,10 @@ class Host(models.Model):
         docker_registry_host = self.browse(int(icp.get_param('runbot.docker_registry_host_id', default=0)))
         docker_registry_url = self._get_docker_registry_url()
         # pull all images from the runbot docker registry
-        is_registry = docker_registry_host == self
+        is_main_registry = docker_registry_host == self
         all_docker_files = self.env['runbot.dockerfile'].search([])
         all_tags = set(all_docker_files.mapped('image_tag'))
-        if docker_registry_url and self.use_remote_docker_registry and not is_registry:
+        if docker_registry_url and self.use_remote_docker_registry and not is_main_registry:
             _logger.info('Pulling docker images...')
             total_duration = 0
             for dockerfile in all_docker_files.filtered('always_pull'):
@@ -169,7 +176,7 @@ class Host(models.Model):
                 future_identifier = None
                 if not dockerfile.in_error:
                     future_identifier = dockerfile._build(self)
-                if is_registry:
+                if self.is_registry:
                     if future_identifier:
                         dockerfile.image_future_identifier = future_identifier
                         if dockerfile.auto_sync:

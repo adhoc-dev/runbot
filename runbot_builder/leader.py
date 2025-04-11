@@ -18,13 +18,15 @@ class LeaderClient(RunbotClient):  # Conductor, Director, Main, Maestro, Lead
             _logger.info('update finished')
 
     def loop_turn(self):
+        if not self.host.is_leader:
+            _logger.warning('Leader client is not a leader host, skipping loop_turn')
+            return 10
         if self.count == 0:
             self.env['runbot.repo']._update_git_config()
             self.env.cr.commit()
             self.git_gc()
             self.env.cr.commit()
         return self.env['runbot.runbot']._fetch_loop_turn(self.host, self.pull_info_failures)
-
 
 if __name__ == '__main__':
     run(LeaderClient)
